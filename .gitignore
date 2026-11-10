@@ -1,0 +1,8 @@
+# Contraseñas del panel y clave de sesión (copia .env.example a .env y rellénalo)
+.env
+# Partida, configuración generada y copias: se crean solas al arrancar
+/data/
+/backups/
+# Python
+__pycache__/
+*.pyc

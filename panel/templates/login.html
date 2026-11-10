@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Panel Minecraft{% endblock %}
+{% block body %}
+<main class="login">
+  <div class="tile">
+    <div class="logo"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
+    <h1>Servidor Minecraft</h1>
+    <p>Panel privado. Introduce la contraseña.</p>
+    {% for cat, msg in get_flashed_messages(with_categories=true) %}
+      <p class="{{ cat }}">{{ msg }}</p>
+    {% endfor %}
+    <form method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" name="password" autofocus required autocomplete="current-password">
+      </div>
+      <button class="btn primary" type="submit">Entrar</button>
+    </form>
+  </div>
+</main>
+{% endblock %}

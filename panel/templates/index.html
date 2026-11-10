@@ -1,0 +1,1147 @@
+{% extends "base.html" %}
+{% block body %}
+{% import "_icons.html" as ic %}
+{% set I = ic.icon %}
+{% macro server_buttons(small=True) %}
+  <button type="button" class="btn {{ 'small' if small }} primary" data-server="start" hidden>{{ I("play") }} Arrancar</button>
+  <button type="button" class="btn {{ 'small' if small }}" data-server="restart" hidden>{{ I("refresh") }} Reiniciar</button>
+  <button type="button" class="btn {{ 'small' if small }} {{ 'icon' if small }} danger" data-server="stop" title="Parar el servidor" hidden>{{ I("power") }}{% if not small %} Parar{% endif %}</button>
+{% endmacro %}
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
+      <div style="min-width: 0;"><b data-server-name>Minecraft</b><small>Minecraft · Fabric</small></div>
+    </div>
+    <nav class="nav">
+      <a href="#inicio" data-page="inicio">{{ I("grid") }}<span>Inicio</span></a>
+      <a href="#jugadores" data-page="jugadores">{{ I("users") }}<span>Jugadores</span><i class="nav-count" id="nav-players" hidden></i></a>
+      <a href="#mapa" data-page="mapa">{{ I("map") }}<span>Mapa</span></a>
+      <a href="#consola" data-page="consola">{{ I("terminal") }}<span>Consola</span></a>
+      <a href="#mods" data-page="mods">{{ I("package") }}<span>Mods</span></a>
+      <a href="#ajustes" data-page="ajustes">{{ I("settings") }}<span>Ajustes</span><i class="nav-dot" id="nav-dirty" hidden></i></a>
+    </nav>
+    <div class="server-box">
+      <div class="sb-head"><span class="status-dot" data-status-dot></span><span data-status-text>…</span><span class="muted" data-uptime></span></div>
+      <div class="sb-stats">
+        <div><small>Jugadores</small><b data-players>–</b></div>
+        <div><small>TPS</small><b data-tps>–</b></div>
+      </div>
+      <div class="sb-actions">{{ server_buttons() }}</div>
+    </div>
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn ghost small" style="width: 100%; justify-content: flex-start;">{{ I("logout") }} Salir</button>
+    </form>
+  </aside>
+
+  <div class="mobile-top">
+    <div class="logo"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
+    <b data-server-name>Minecraft</b>
+    <span class="status-dot" data-status-dot></span>
+    <form method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn ghost small icon" title="Salir">{{ I("logout") }}</button>
+    </form>
+  </div>
+
+  <main class="content">
+    <div class="banner" id="job-banner" hidden><span class="spin"></span><span></span></div>
+    <div class="banner warn" id="pending-banner" hidden>{{ I("alert") }}<span>Hay cambios guardados que se aplican al reiniciar el servidor.</span>
+      <button type="button" class="btn small primary" data-server="restart">{{ I("refresh") }} Reiniciar ahora</button></div>
+
+    <!-- ============================================================ Inicio -->
+    <section class="page" id="page-inicio" hidden>
+      <header class="page-head">
+        <div><div class="eyebrow" id="greeting">Hola</div><h1 data-server-name>Minecraft</h1></div>
+        <div class="head-actions">
+          <a class="btn" href="#consola">{{ I("terminal") }} Consola</a>
+          <a class="btn primary" href="#mapa">{{ I("map") }} Ver el mapa</a>
+        </div>
+      </header>
+      <div class="bento">
+        <section class="tile hero span-8">
+          <div class="hero-info">
+            <div>
+              <div class="kicker">Estado del servidor</div>
+              <div class="hero-state" id="hero-state">…</div>
+              <div class="motd" id="hero-motd"></div>
+            </div>
+            <div class="copy-field">
+              <div><small>Dirección para conectarse</small><span id="addr">{{ data.address }}</span></div>
+              <button type="button" class="btn small" data-copy="#addr">{{ I("copy") }} Copiar</button>
+            </div>
+            <div class="pills" id="hero-pills"></div>
+            <div class="hero-actions">{{ server_buttons(False) }}</div>
+          </div>
+          <div class="hero-block"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
+        </section>
+
+        <section class="tile span-4">
+          <div class="tile-head"><div class="tile-title">Conectados <span class="count" id="players-count"></span></div>
+            <a class="link" href="#jugadores">Gestionar {{ I("arrow") }}</a></div>
+          <div class="plist" id="home-players"></div>
+        </section>
+
+        <section class="tile span-6">
+          <div class="tile-head"><div class="tile-title">Rendimiento</div><span id="perf-tag"></span></div>
+          <div class="perf-row">
+            <div><small>TPS</small><div class="big" id="tps">–</div></div>
+            <div><small>MSPT medio</small><div class="big" id="mspt">–</div></div>
+            <div><small>MSPT p95</small><div class="big" id="p95">–</div></div>
+          </div>
+          <div class="chart" id="chart" role="img"></div>
+          <p class="hint">Milisegundos por tick en la última hora. Por encima de 50 ms el servidor ya no llega a 20 TPS: eso es el lag.</p>
+        </section>
+
+        <section class="tile stat span-3">
+          <div class="tile-title">Recursos</div>
+          <div><div class="big" id="ram">–</div><small class="hint" id="ram-sub"></small></div>
+          <div class="meter" id="ram-meter"><div></div></div>
+          <dl class="kv">
+            <dt>CPU</dt><dd id="cpu">–</dd>
+            <dt>Disco libre</dt><dd id="disk">–</dd>
+          </dl>
+        </section>
+
+        <section class="tile stat span-3">
+          <div class="tile-title">Mundo</div>
+          <dl class="kv">
+            <dt>Día</dt><dd id="day">–</dd>
+            <dt>Tamaño</dt><dd id="world-size">–</dd>
+            <dt>Encendido</dt><dd id="uptime-big">–</dd>
+            <dt>Última copia</dt><dd id="last-backup">–</dd>
+          </dl>
+          <button type="button" class="btn small" id="home-backup">{{ I("archive") }} Hacer copia ahora</button>
+        </section>
+
+        <section class="tile span-7">
+          <div class="tile-head"><div class="tile-title">Actividad</div><a class="link" href="#consola">Consola {{ I("arrow") }}</a></div>
+          <ul class="events" id="events"></ul>
+        </section>
+
+        <section class="tile span-5">
+          <div class="tile-head"><div class="tile-title">Mapa del mundo</div><span id="home-map-tag"></span></div>
+          <p class="tile-sub" style="margin-top: 0;">Mapa 3D con BlueMap: superficie, Nether y End, con las construcciones de todos y dónde está cada jugador. Se actualiza solo mientras jugáis.</p>
+          <div class="chips" id="home-map-chips"></div>
+          <div class="hero-actions" style="margin-top: 14px;">
+            <a class="btn primary small" href="#mapa">{{ I("map") }} Abrir el mapa</a>
+            <a class="btn small" href="/mapa/" target="_blank" rel="noopener">{{ I("external") }} En otra pestaña</a>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ============================================================ Jugadores -->
+    <section class="page" id="page-jugadores" hidden>
+      <header class="page-head">
+        <div><div class="eyebrow">Jugadores</div><h1>Quién entra</h1></div>
+      </header>
+      <div class="two-col">
+        <div class="stack">
+          <section class="tile">
+            <div class="tile-head"><div class="tile-title">Conectados ahora <span class="count" id="online-count"></span></div></div>
+            <div class="plist" id="online-list"></div>
+          </section>
+          <section class="tile">
+            <div class="tile-head"><div class="tile-title">Operadores <span class="count" id="ops-count"></span></div></div>
+            <p class="tile-sub">Pueden usar todos los comandos: /gamemode, /tp, /carpet, /bluemap…</p>
+            <form class="add-row" data-add="op"><input type="text" placeholder="Nombre de Minecraft" maxlength="16" required><button class="btn">{{ I("crown") }} Hacer op</button></form>
+            <div class="plist" id="ops-list"></div>
+          </section>
+        </div>
+        <div class="stack">
+          <section class="tile">
+            <div class="tile-head"><div class="tile-title">Lista blanca <span class="count" id="wl-count"></span></div><span id="wl-state"></span></div>
+            <p class="tile-sub">Con la lista blanca activada solo pueden entrar estos jugadores (se cambia en Ajustes).</p>
+            <form class="add-row" data-add="whitelist_add"><input type="text" placeholder="Nombre de Minecraft" maxlength="16" required><button class="btn primary">{{ I("plus") }} Añadir</button></form>
+            <div class="plist" id="wl-list"></div>
+          </section>
+          <section class="tile">
+            <div class="tile-head"><div class="tile-title">Baneados <span class="count" id="bans-count"></span></div></div>
+            <div class="plist" id="bans-list"></div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Mapa -->
+    <section class="page map-page" id="page-mapa" hidden>
+      <div class="map-bar">
+        <div class="left">
+          <h1 style="font-family: var(--pixel); font-size: 24px;">Mapa</h1>
+          <div class="map-status" id="map-status"></div>
+        </div>
+        <div class="head-actions">
+          <label class="switch" title="Cualquiera con el enlace puede ver el mapa sin contraseña"><input type="checkbox" id="map-public"><span class="knob"></span><span class="txt">Público</span></label>
+          <label class="switch"><input type="checkbox" id="map-players"><span class="knob"></span><span class="txt">Jugadores</span></label>
+          <button type="button" class="btn small" id="map-link" hidden>{{ I("copy") }} Enlace</button>
+          <button type="button" class="btn small" id="map-update" title="Dibujar ya los cambios del mundo">{{ I("refresh") }} Actualizar</button>
+          <button type="button" class="btn small ghost" id="map-full" title="Volver a dibujar todo el mapa desde cero">Redibujar todo</button>
+          <a class="btn small" href="/mapa/" target="_blank" rel="noopener" title="Abrir en otra pestaña">{{ I("external") }}</a>
+        </div>
+      </div>
+      <div class="map-frame"><iframe id="map-iframe" title="Mapa del mundo" allow="fullscreen"></iframe></div>
+    </section>
+
+    <!-- ============================================================ Consola -->
+    <section class="page" id="page-consola" hidden>
+      <header class="page-head">
+        <div><div class="eyebrow">Consola</div><h1>Registro y comandos</h1></div>
+        <div class="head-actions">
+          <div class="seg" id="log-filter">
+            <button type="button" class="active" data-filter="">Todo</button>
+            <button type="button" data-filter="chat">Chat</button>
+            <button type="button" data-filter="warn">Avisos y errores</button>
+          </div>
+        </div>
+      </header>
+      <div class="console">
+        <pre class="log" id="log"></pre>
+        <form class="cmd-row" id="cmd-form">
+          <div class="prompt"><span>/</span><input type="text" id="cmd" autocomplete="off" spellcheck="false" placeholder="Comando: time set day, gamerule, spark tps…"></div>
+          <button class="btn primary">{{ I("arrow") }} Enviar</button>
+        </form>
+        <div class="chips" id="quick-cmds"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ Mods -->
+    <section class="page" id="page-mods" hidden>
+      <header class="page-head">
+        <div><div class="eyebrow">Mods</div><h1>Fabric y mods</h1></div>
+        <div class="head-actions"><span class="hint" style="max-width: 420px; margin: 0;">Todos son mods solo de servidor: tus amigos entran con el Minecraft normal, sin instalar nada.</span></div>
+      </header>
+      <section class="tile">
+        <div class="tile-head"><div class="tile-title">Versión</div></div>
+        <div id="version-box"><p class="muted">Comprobando…</p></div>
+      </section>
+      <div class="mod-groups" id="mod-groups"></div>
+      <section class="tile">
+        <div class="tile-head"><div class="tile-title">Más mods de Modrinth</div></div>
+        <p class="tile-sub" id="search-sub">Solo salen mods de Fabric que funcionan en el servidor.</p>
+        <form class="add-row" id="mod-search"><input type="search" placeholder="Buscar en Modrinth…"><button class="btn">{{ I("search") }} Buscar</button></form>
+        <div class="mod-grid" id="mod-results"></div>
+      </section>
+      <section class="tile">
+        <div class="tile-head"><div class="tile-title">Ficheros instalados <span class="count" id="files-count"></span></div></div>
+        <p class="tile-sub">Lo que hay ahora en la carpeta <code>mods</code>, incluidas las dependencias que se bajan solas.</p>
+        <div class="plist" id="mod-files"></div>
+      </section>
+    </section>
+
+    <!-- ============================================================ Ajustes -->
+    <section class="page" id="page-ajustes" hidden>
+      <header class="page-head">
+        <div><div class="eyebrow">Ajustes</div><h1>Servidor y copias</h1></div>
+      </header>
+      <form id="settings-form" autocomplete="off">
+        <div class="two-col">
+          <div class="stack">
+            <section class="tile">
+              <div class="tile-head"><div class="tile-title">Servidor</div></div>
+              <div class="field">
+                <label for="f-motd">Descripción (MOTD)</label>
+                <input type="text" id="f-motd" name="motd" maxlength="120">
+                <small>Lo que se ve en la lista de servidores. Admite colores con §: <code>§aVerde §6Dorado</code>.</small>
+              </div>
+              <div class="grid-2">
+                <div class="field"><label for="f-max">Jugadores máximos</label><input type="number" id="f-max" name="max_players" min="1" max="200"></div>
+                <div class="field"><label for="f-spawn">Protección del spawn</label><input type="number" id="f-spawn" name="spawn_protection" min="0" max="64"><small>Bloques alrededor del spawn que solo pueden tocar los op. 0 = ninguna.</small></div>
+              </div>
+              <div class="field">
+                <div class="range-head"><label for="f-mem">Memoria RAM para Minecraft</label><output id="o-mem"></output></div>
+                <input type="range" id="f-mem" name="memory_gb" min="2" max="{{ [data.memTotalGb - 2, 2] | max }}" step="1">
+                <small>El ordenador tiene {{ data.memTotalGb }} GB y los comparte con los demás servicios. Con 4 GB va bien para unos pocos jugadores.</small>
+              </div>
+              <label class="switch"><input type="checkbox" name="whitelist"><span class="knob"></span><span class="txt">Lista blanca<small>Solo entran los jugadores de la lista (pestaña Jugadores).</small></span></label>
+            </section>
+            <section class="tile">
+              <div class="tile-head"><div class="tile-title">Partida</div></div>
+              <div class="field">
+                <span class="label">Dificultad</span>
+                <div class="seg full">
+                  {% for k, v in data.difficulties.items() %}<input type="radio" name="difficulty" id="d-{{ k }}" value="{{ k }}"><label for="d-{{ k }}">{{ v }}</label>{% endfor %}
+                </div>
+              </div>
+              <div class="field">
+                <label for="f-mode">Modo de juego al entrar</label>
+                <select id="f-mode" name="gamemode">{% for k, v in data.gamemodes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+              </div>
+              <label class="switch"><input type="checkbox" name="pvp"><span class="knob"></span><span class="txt">PvP<small>Los jugadores pueden hacerse daño entre ellos.</small></span></label>
+              <label class="switch"><input type="checkbox" name="allow_flight"><span class="knob"></span><span class="txt">Permitir volar<small>Evita que el servidor eche por "volar" a quien va en élitros con lag o usa jugadores de Carpet.</small></span></label>
+              <label class="switch"><input type="checkbox" name="command_blocks"><span class="knob"></span><span class="txt">Bloques de comandos</span></label>
+              <label class="switch"><input type="checkbox" name="hardcore"><span class="knob"></span><span class="txt">Hardcore<small>Al morir pasas a espectador. Pensado para un mundo nuevo.</small></span></label>
+            </section>
+          </div>
+          <div class="stack">
+            <section class="tile">
+              <div class="tile-head"><div class="tile-title">Distancias</div></div>
+              <div class="field">
+                <div class="range-head"><label for="f-view">Distancia de visión</label><output id="o-view"></output></div>
+                <input type="range" id="f-view" name="view_distance" min="3" max="32">
+                <small>Hasta dónde ven los jugadores. Gasta red y RAM, poca CPU.</small>
+              </div>
+              <div class="field">
+                <div class="range-head"><label for="f-sim">Distancia de simulación</label><output id="o-sim"></output></div>
+                <input type="range" id="f-sim" name="simulation_distance" min="3" max="32">
+                <small>Hasta dónde funcionan granjas, redstone y mobs alrededor de cada jugador. Es lo que más CPU gasta: en técnico se suele dejar en 10–12.</small>
+              </div>
+            </section>
+            <section class="tile">
+              <div class="tile-head"><div class="tile-title">Copias automáticas</div></div>
+              <label class="switch"><input type="checkbox" name="backup_auto"><span class="knob"></span><span class="txt">Una copia al día<small>Solo si alguien ha jugado desde la anterior. Se guardan en la carpeta <code>backups</code>.</small></span></label>
+              <div class="grid-2" style="margin-top: 10px;">
+                <div class="field"><label for="f-bh">Hora</label><select id="f-bh" name="backup_hour">{% for h in range(24) %}<option value="{{ h }}">{{ '%02d' % h }}:00</option>{% endfor %}</select></div>
+                <div class="field"><label for="f-bk">Cuántas guardar</label><input type="number" id="f-bk" name="backup_keep" min="1" max="60"><small>Las manuales no se borran solas.</small></div>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="savebar" id="savebar">
+          <div><b>Ajustes del servidor</b><small id="save-msg">Todo guardado</small></div>
+          <div class="row">
+            <button type="button" class="btn" id="save-btn">{{ I("save") }} Guardar</button>
+            <button type="button" class="btn primary" id="save-restart">{{ I("refresh") }} Guardar y reiniciar</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="two-col">
+        <section class="tile">
+          <div class="tile-head"><div class="tile-title">Copias de seguridad <span class="count" id="backups-count"></span></div>
+            <button type="button" class="btn small primary" id="backup-now">{{ I("archive") }} Hacer copia ahora</button></div>
+          <p class="tile-sub" id="backups-sub"></p>
+          <div class="backup-list" id="backup-list"></div>
+        </section>
+        <section class="tile danger-zone">
+          <div class="tile-head"><div class="tile-title">Mundo nuevo</div></div>
+          <p class="tile-sub">Para empezar de cero. Antes se guarda el mundo actual en Copias («Mundo anterior»), así que se puede recuperar.</p>
+          <form id="new-world">
+            <div class="grid-2">
+              <div class="field"><label for="nw-seed">Semilla</label><input type="text" id="nw-seed" name="seed" maxlength="64" placeholder="Vacía = al azar"></div>
+              <div class="field"><label for="nw-type">Tipo de mundo</label><select id="nw-type" name="level_type">{% for k, v in data.levelTypes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+            </div>
+            <button class="btn danger solid">{{ I("sparkle") }} Crear mundo nuevo…</button>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog class="modal" id="modal">
+  <form method="dialog">
+    <h3 id="modal-title"></h3>
+    <p id="modal-text"></p>
+    <input type="text" id="modal-input" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn primary" value="ok" id="modal-ok">Aceptar</button>
+      <button class="btn" value="cancel" formnovalidate>Cancelar</button>
+    </div>
+  </form>
+</dialog>
+<div class="toasts" id="toasts"></div>
+
+<script id="app-data" type="application/json">{{ data | tojson }}</script>
+<script id="icon-data" type="application/json">{{ ic.paths | tojson }}</script>
+<script>
+  const $ = (s, root = document) => root.querySelector(s);
+  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+  const CSRF = "{{ csrf }}";
+  const DATA = JSON.parse($("#app-data").textContent);
+  const ICONS = JSON.parse($("#icon-data").textContent);
+  let ST = DATA.status;
+
+  // ------------------------------------------------------------ utilidades
+  function el(tag, attrs = {}, ...children) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k === "text") e.textContent = v;
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    e.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+    return e;
+  }
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svg(tag, attrs = {}) {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
+  }
+  function icon(name) {
+    const s = svg("svg", { class: "i", viewBox: "0 0 24 24", "aria-hidden": "true" });
+    s.innerHTML = ICONS[name] || "";
+    return s;
+  }
+  function fmtSize(bytes) {
+    if (bytes === null || bytes === undefined) return "–";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return `${bytes.toFixed(i > 1 ? 1 : 0).replace(".", ",")} ${units[i]}`;
+  }
+  function fmtDur(s) {
+    if (s === null || s === undefined) return "–";
+    s = Math.max(0, Math.round(s));
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    if (d) return `${d} d ${h} h`;
+    if (h) return `${h} h ${m} min`;
+    if (m) return `${m} min`;
+    return `${s} s`;
+  }
+  function fmtAgo(t) {
+    const s = Date.now() / 1000 - t;
+    if (s < 60) return "ahora mismo";
+    if (s < 86400) return `hace ${fmtDur(s)}`;
+    return new Date(t * 1000).toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  }
+  const fmtNum = (n, d = 1) => (n === null || n === undefined ? "–" : Number(n).toFixed(d).replace(".", ","));
+  const hhmm = (t) => new Date(t * 1000).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const fmtDate = (t) => new Date(t * 1000).toLocaleString("es-ES", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const DIMS = { "minecraft:overworld": "Superficie", "minecraft:the_nether": "Nether", "minecraft:the_end": "End" };
+  const MAP_IDS = { "minecraft:overworld": "world", "minecraft:the_nether": "world_the_nether", "minecraft:the_end": "world_the_end" };
+  const dimName = (d) => DIMS[d] || (d || "").replace("minecraft:", "");
+
+  // MOTD con códigos de color de Minecraft (§a, §l…)
+  const MC_COLORS = { 0: "#000", 1: "#00a", 2: "#0a0", 3: "#0aa", 4: "#a00", 5: "#a0a", 6: "#fa0", 7: "#aaa", 8: "#555", 9: "#55f",
+    a: "#5f5", b: "#5ff", c: "#f55", d: "#f5f", e: "#ff5", f: "#fff" };
+  const stripCodes = (s) => (s || "").replace(/§./g, "");
+  function renderMotd(s) {
+    const frag = document.createDocumentFragment();
+    let style = {};
+    for (const part of (s || "").split(/(§.)/)) {
+      const m = part.match(/^§(.)$/);
+      if (m) {
+        const c = m[1].toLowerCase();
+        if (MC_COLORS[c]) style = { color: MC_COLORS[c] };
+        else if (c === "l") style.fontWeight = "700";
+        else if (c === "o") style.fontStyle = "italic";
+        else if (c === "n") style.textDecoration = "underline";
+        else if (c === "r") style = {};
+        continue;
+      }
+      if (!part) continue;
+      const span = el("span", { text: part });
+      Object.assign(span.style, style);
+      frag.append(span);
+    }
+    return frag;
+  }
+
+  // Cabeza del jugador recortada de su skin (si no se puede cargar, la inicial).
+  const skinState = {};
+  function head(uuid, name, cls = "") {
+    const h = el("span", { class: `head noimg ${cls}`, text: (name || "?")[0].toUpperCase(), "aria-hidden": "true" });
+    const url = uuid ? `/skin/${uuid}` : null;
+    const apply = () => { h.style.backgroundImage = `url(${url})`; h.classList.remove("noimg"); h.textContent = ""; };
+    if (!url) return h;
+    if (skinState[uuid] === "ok") apply();
+    else if (skinState[uuid] !== "bad") {
+      const img = new Image();
+      img.onload = () => { skinState[uuid] = "ok"; apply(); };
+      img.onerror = () => { skinState[uuid] = "bad"; };
+      img.src = url;
+    }
+    return h;
+  }
+
+  // ------------------------------------------------------------ avisos, diálogos y peticiones
+  function toast(message, kind = "ok") {
+    const t = el("div", { class: `toast ${kind}` }, icon(kind === "error" ? "alert" : "check"), el("span", { text: message }));
+    $("#toasts").append(t);
+    setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 300); }, kind === "error" ? 7000 : 4500);
+  }
+  function ask({ title, text = "", ok = "Aceptar", value = null, placeholder = "" }) {
+    const dialog = $("#modal"), input = $("#modal-input");
+    $("#modal-title").textContent = title;
+    $("#modal-text").textContent = text;
+    $("#modal-text").hidden = !text;
+    $("#modal-ok").textContent = ok;
+    input.hidden = value === null;
+    input.value = value || "";
+    input.placeholder = placeholder;
+    dialog.returnValue = "";
+    dialog.showModal();
+    if (value !== null) input.focus();
+    return new Promise((resolve) => dialog.addEventListener("close", () => {
+      resolve(dialog.returnValue === "ok" ? (value === null ? true : input.value.trim()) : null);
+    }, { once: true }));
+  }
+  async function request(url, opts = {}) {
+    const r = await fetch(url, opts);
+    if (r.status === 401) { location.href = "/login"; throw new Error("La sesión ha caducado."); }
+    const d = await r.json().catch(() => ({ ok: false, message: `Error ${r.status}` }));
+    if (d.ok === false || !r.ok) throw new Error(d.message || `Error ${r.status}`);
+    return d;
+  }
+  const get = (url) => request(url);
+  const post = (url, body = {}) => request(url, {
+    method: "POST", body: JSON.stringify(body),
+    headers: { "X-CSRF-Token": CSRF, "X-Requested-With": "fetch", "Content-Type": "application/json" } });
+  async function act(button, run) {
+    if (button) button.classList.add("loading");
+    try {
+      const d = await run();
+      if (d && d.message) toast(d.message);
+      return d;
+    } catch (err) {
+      toast(err.message, "error");
+      return null;
+    } finally {
+      if (button) button.classList.remove("loading");
+    }
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (_) {
+      const t = el("textarea", { style: "position: fixed; opacity: 0;" });
+      t.value = text;
+      document.body.append(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    toast(`Copiado: ${text}`);
+  }
+  $$("[data-copy]").forEach((b) => b.addEventListener("click", () => copyText($(b.dataset.copy).textContent.trim())));
+
+  // ------------------------------------------------------------ páginas
+  let currentPage = null;
+  const onShow = {};
+  function showPage(page) {
+    if (!$("#page-" + page)) page = "inicio";
+    if (page === currentPage) return;
+    currentPage = page;
+    $$(".page").forEach((s) => (s.hidden = s.id !== "page-" + page));
+    $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === page));
+    document.body.classList.toggle("map-mode", page === "mapa");
+    window.scrollTo({ top: 0 });
+    if (onShow[page]) onShow[page]();
+  }
+  window.addEventListener("hashchange", () => showPage(location.hash.slice(1)));
+  const hour = new Date().getHours();
+  $("#greeting").textContent = hour < 7 ? "Buenas noches" : hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
+
+  // ------------------------------------------------------------ arrancar, parar, reiniciar
+  $$("[data-server]").forEach((b) => b.addEventListener("click", async () => {
+    const action = b.dataset.server;
+    const n = ST.players.length;
+    if (action !== "start") {
+      const verb = action === "stop" ? "Parar" : "Reiniciar";
+      const text = n ? `Hay ${n} ${n === 1 ? "jugador conectado" : "jugadores conectados"}: se les avisa 10 segundos antes.` : "";
+      if (!(await ask({ title: `¿${verb} el servidor?`, text, ok: verb }))) return;
+    }
+    await act(b, () => post(`/server/${action}`));
+    refresh();
+  }));
+
+  // ------------------------------------------------------------ estado (cada 3 s)
+  const STATE_TEXT = { online: "En marcha", starting: "Arrancando…", stopping: "Parando…", stopped: "Parado" };
+  const STATE_CLASS = { online: "on", starting: "wait", stopping: "wait", stopped: "off" };
+  let lastJob = (ST.job_last || {}).t || 0;
+
+  function perfStatus(p) {
+    if (!p || p.mspt === undefined) return { cls: "none", icon: "gauge", text: "Sin datos" };
+    if (p.frozen) return { cls: "warn", icon: "alert", text: "Juego congelado (/tick)" };
+    if (p.mspt <= 40) return { cls: "ok", icon: "check", text: "Fluido" };
+    if (p.mspt <= 50) return { cls: "warn", icon: "alert", text: "Al límite" };
+    return { cls: "bad", icon: "alert", text: "Lag" };
+  }
+  const statusTag = (s) => el("span", { class: `status-tag ${s.cls}` }, icon(s.icon), s.text);
+
+  function renderStatus() {
+    const s = ST, set = s.settings;
+    const name = stripCodes(set.motd) || "Minecraft";
+    $$("[data-server-name]").forEach((e) => (e.textContent = name));
+    document.title = `${name} · Panel Minecraft`;
+    $$("[data-status-dot]").forEach((d) => (d.className = `status-dot ${STATE_CLASS[s.state]}`));
+    $$("[data-status-text]").forEach((d) => (d.textContent = STATE_TEXT[s.state]));
+    $$("[data-uptime]").forEach((d) => (d.textContent = s.uptime ? fmtDur(s.uptime) : ""));
+    const running = s.state !== "stopped", busy = !!s.job.name || s.state === "stopping";
+    $$("[data-server=start]").forEach((b) => { b.hidden = running; b.disabled = busy; });
+    $$("[data-server=restart]").forEach((b) => { b.hidden = !running && !b.closest("#pending-banner"); b.disabled = busy; });
+    $$("[data-server=stop]").forEach((b) => { b.hidden = !running; b.disabled = busy; });
+    $$("[data-players]").forEach((e) => (e.textContent = running ? `${s.players.length}/${s.max_players || set.max_players}` : "–"));
+    $$("[data-tps]").forEach((e) => (e.textContent = s.perf.tps !== undefined ? fmtNum(s.perf.tps) : "–"));
+    const navP = $("#nav-players");
+    navP.hidden = !s.players.length;
+    navP.textContent = s.players.length;
+
+    // portada
+    const hs = $("#hero-state");
+    hs.className = `hero-state ${STATE_CLASS[s.state]}`;
+    if (s.state === "starting") hs.textContent = s.starting_for > 25 ? `Arrancando… ${fmtDur(s.starting_for)}` : "Arrancando…";
+    else if (s.state === "stopped" && s.exit_code && s.exit_code !== 0) hs.textContent = "Se ha caído";
+    else hs.textContent = STATE_TEXT[s.state];
+    $("#hero-motd").replaceChildren(renderMotd(set.motd));
+    const fab = s.fabric || {};
+    $("#hero-pills").replaceChildren(...[
+      el("span", { class: "pill" }, icon("box"), `Minecraft ${set.version}`),
+      fab.loader ? el("span", { class: "pill" }, `Fabric ${fab.loader}`) : null,
+      el("span", { class: "pill" }, icon("package"), `${set.mods.length} mods`),
+      el("span", { class: `pill ${set.whitelist ? "ok" : ""}` }, icon(set.whitelist ? "lock" : "globe"), set.whitelist ? "Lista blanca" : "Abierto a todos"),
+      el("span", { class: "pill" }, DATA.difficulties[set.difficulty]),
+      set.hardcore ? el("span", { class: "pill" }, icon("skull"), "Hardcore") : null].filter(Boolean));
+
+    // jugadores
+    $("#players-count").textContent = running ? `${s.players.length}/${s.max_players || set.max_players}` : "";
+    const hp = $("#home-players");
+    if (!s.players.length) hp.replaceChildren(el("div", { class: "empty-note", text: running ? "No hay nadie conectado." : "El servidor está parado." }));
+    else hp.replaceChildren(...s.players.map((p) => el("div", { class: "prow" }, head(p.uuid, p.name),
+      el("div", {}, el("b", { text: p.name }), el("small", { text: `${dimName(p.dim)}${p.pos ? " · " + p.pos.join(", ") : ""}` })),
+      el("small", { class: "muted", text: fmtDur(Date.now() / 1000 - p.since) }))));
+
+    // rendimiento
+    const p = s.perf;
+    $("#tps").textContent = p.tps !== undefined ? fmtNum(p.tps) : "–";
+    $("#mspt").replaceChildren(p.mspt !== undefined ? fmtNum(p.mspt) : "–", el("small", { text: "ms" }));
+    $("#p95").replaceChildren(p.p95 !== undefined ? fmtNum(p.p95) : "–", el("small", { text: "ms" }));
+    $("#perf-tag").replaceChildren(s.state === "online" ? statusTag(perfStatus(p)) : "");
+    renderChart(s.history);
+
+    // recursos y mundo
+    const rss = s.proc.rss, total = s.mem_total;
+    $("#ram").replaceChildren(rss ? fmtSize(rss) : "–", el("small", { text: `de ${fmtSize(total)}` }));
+    $("#ram-sub").textContent = rss ? `RAM del ordenador que usa Minecraft. Java gasta algo más que su límite (${set.memory_gb} GB): es normal.`
+      : "Con el servidor parado no gasta memoria.";
+    const pct = rss ? Math.min(100, (100 * rss) / total) : 0;
+    $("#ram-meter").className = `meter ${pct > 75 ? "bad" : pct > 55 ? "warn" : ""}`;
+    $("#ram-meter > div").style.width = `${pct}%`;
+    $("#cpu").textContent = s.proc.cpu !== undefined && s.proc.cpu !== null ? `${fmtNum(s.proc.cpu, 0)} %` : "–";
+    $("#disk").textContent = fmtSize(s.disk.free);
+    $("#day").textContent = s.day !== null && s.day !== undefined ? s.day : "–";
+    $("#world-size").textContent = fmtSize(s.world_size);
+    $("#uptime-big").textContent = s.uptime ? fmtDur(s.uptime) : "–";
+    $("#last-backup").textContent = s.last_backup ? fmtAgo(s.last_backup.time) : "ninguna";
+
+    renderEvents(s.events);
+    renderMapChips();
+
+    // tareas largas y cambios pendientes
+    $("#job-banner").hidden = !s.job.name;
+    $("#job-banner span:last-child").textContent = s.job.message || s.job.name;
+    $("#pending-banner").hidden = !s.pending || !!s.job.name;
+    if (s.job_last && s.job_last.t > lastJob) {
+      lastJob = s.job_last.t;
+      toast(s.job_last.message, s.job_last.ok ? "ok" : "error");
+      if (currentPage === "ajustes") loadBackups();
+    }
+    if (currentPage === "jugadores") renderOnline();
+  }
+
+  async function refresh() {
+    try {
+      ST = await get("/api/status");
+      renderStatus();
+    } catch (_) { /* sin conexión: se reintenta */ }
+  }
+  setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+
+  // ------------------------------------------------------------ gráfico de MSPT (última hora)
+  let chartHover = null;
+  function renderChart(history) {
+    const box = $("#chart");
+    const w = box.clientWidth || 500, h = box.clientHeight || 150;
+    const pad = { l: 34, r: 8, t: 10, b: 20 };
+    const now = Date.now() / 1000, t0 = now - 3600;
+    const pts = (history || []).filter((d) => d[0] >= t0);
+    if (pts.length < 2) {
+      box.replaceChildren(el("div", { class: "chart-empty", text: ST.state === "online" ? "Recogiendo datos… (una muestra cada 10 s)" : "Sin datos: el gráfico se llena con el servidor en marcha." }));
+      box.setAttribute("aria-label", "Sin datos de MSPT");
+      return;
+    }
+    const maxV = Math.max(...pts.map((d) => d[1]));
+    const yMax = Math.max(60, Math.ceil((maxV * 1.15) / 10) * 10);
+    const x = (t) => pad.l + ((t - t0) / 3600) * (w - pad.l - pad.r);
+    const y = (v) => pad.t + (1 - v / yMax) * (h - pad.t - pad.b);
+    const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, "aria-hidden": "true" });
+    const defs = svg("defs");
+    const grad = svg("linearGradient", { id: "mspt-fill", x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.append(svg("stop", { offset: "0", "stop-color": "#3987e5", "stop-opacity": ".28" }), svg("stop", { offset: "1", "stop-color": "#3987e5", "stop-opacity": "0" }));
+    defs.append(grad);
+    s.append(defs);
+    for (const v of [0, 25]) {
+      s.append(svg("line", { class: "grid-line", x1: pad.l, x2: w - pad.r, y1: y(v), y2: y(v) }));
+      const t = svg("text", { class: "axis", x: pad.l - 6, y: y(v) + 4, "text-anchor": "end" }); t.textContent = v; s.append(t);
+    }
+    s.append(svg("line", { class: "limit", x1: pad.l, x2: w - pad.r, y1: y(50), y2: y(50) }));
+    const lt = svg("text", { class: "limit-label", x: w - pad.r, y: y(50) - 5, "text-anchor": "end" }); lt.textContent = "50 ms · límite para 20 TPS"; s.append(lt);
+    const yl = svg("text", { class: "axis", x: pad.l - 6, y: y(50) + 4, "text-anchor": "end" }); yl.textContent = "50"; s.append(yl);
+    for (const [t, label] of [[t0, "hace 1 h"], [t0 + 1800, "30 min"], [now, "ahora"]]) {
+      const tx = svg("text", { class: "axis", x: x(t), y: h - 4, "text-anchor": t === t0 ? "start" : t === now ? "end" : "middle" });
+      tx.textContent = label; s.append(tx);
+    }
+    // Línea partida donde el servidor estuvo parado (huecos de más de 30 s entre muestras).
+    let line = "", area = "", segStart = null, prev = null;
+    const closeArea = () => { if (segStart !== null) area += `L${x(prev[0])},${y(0)}L${x(segStart)},${y(0)}Z`; };
+    for (const d of pts) {
+      const gap = !prev || d[0] - prev[0] > 30;
+      if (gap) { closeArea(); segStart = d[0]; line += `M${x(d[0])},${y(d[1])}`; area += `M${x(d[0])},${y(0)}L${x(d[0])},${y(d[1])}`; }
+      else { line += `L${x(d[0])},${y(d[1])}`; area += `L${x(d[0])},${y(d[1])}`; }
+      prev = d;
+    }
+    closeArea();
+    s.append(svg("path", { class: "area", d: area }), svg("path", { class: "line", d: line }));
+    const cross = svg("line", { class: "cross", y1: pad.t, y2: h - pad.b, visibility: "hidden" });
+    const dot = svg("circle", { class: "dot", r: 4.5, visibility: "hidden" });
+    s.append(cross, dot);
+    const tip = el("div", { class: "chart-tip", hidden: true });
+    const showAt = (px) => {
+      let best = pts[0];
+      for (const d of pts) if (Math.abs(x(d[0]) - px) < Math.abs(x(best[0]) - px)) best = d;
+      const bx = x(best[0]), by = y(best[1]);
+      cross.setAttribute("x1", bx); cross.setAttribute("x2", bx); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", bx); dot.setAttribute("cy", by); dot.setAttribute("visibility", "visible");
+      tip.replaceChildren(`${hhmm(best[0])} · `, el("b", { text: `${fmtNum(best[1])} ms` }), ` · ${best[2]} ${best[2] === 1 ? "jugador" : "jugadores"}`);
+      tip.hidden = false;
+      tip.style.left = `${Math.min(Math.max(bx, 90), w - 90)}px`;
+      tip.style.top = `${Math.max(0, by - 44)}px`;
+    };
+    const hit = svg("rect", { x: pad.l, y: 0, width: w - pad.l - pad.r, height: h, fill: "transparent" });
+    hit.addEventListener("pointermove", (e) => { chartHover = e.clientX - s.getBoundingClientRect().left; showAt(chartHover); });
+    hit.addEventListener("pointerleave", () => { chartHover = null; tip.hidden = true; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); });
+    s.append(hit);
+    box.replaceChildren(s, tip);
+    const avg = pts.reduce((a, d) => a + d[1], 0) / pts.length;
+    box.setAttribute("aria-label", `MSPT en la última hora: media ${fmtNum(avg)} ms, máximo ${fmtNum(maxV)} ms`);
+    if (chartHover !== null) showAt(chartHover);
+  }
+  window.addEventListener("resize", () => renderChart(ST.history));
+
+  // ------------------------------------------------------------ actividad
+  const EV = {
+    join: ["in", (e) => [el("b", { text: e.name }), " ha entrado"]],
+    leave: ["out", (e) => [el("b", { text: e.name }), " ha salido"]],
+    chat: ["chat", (e) => [el("b", { text: e.name }), ": ", el("em", { text: e.text })]],
+    advancement: ["trophy", (e) => [el("b", { text: e.name }), " ha conseguido ", el("b", { text: e.text })]],
+    death: ["skull", (e) => [el("b", { text: e.name }), " ", e.text]],
+    online: ["power", () => ["Servidor en marcha"]],
+    stopped: ["stop", (e) => [e.text]],
+  };
+  let lastEvent = 0;
+  function renderEvents(events) {
+    const ul = $("#events");
+    if (!events.length) { ul.replaceChildren(el("li", { class: "empty-note", text: "Aquí saldrá quién entra, el chat, los logros y las muertes." })); lastEvent = 0; return; }
+    const top = events[events.length - 1].n;
+    if (top === lastEvent && ul.children.length) return;
+    ul.replaceChildren(...events.slice().reverse().map((e) => {
+      const [ic, body] = EV[e.kind] || ["alert", () => [e.text]];
+      return el("li", { class: `${e.kind} ${e.n > lastEvent && lastEvent ? "new" : ""}` },
+        el("span", { class: "ev-ico" }, icon(ic)), el("span", {}, ...body(e)), el("time", { text: hhmm(e.t) }));
+    }));
+    lastEvent = top;
+  }
+
+  // ------------------------------------------------------------ jugadores
+  let lists = { whitelist: [], ops: [], bans: [] };
+  const isOp = (name) => lists.ops.some((o) => o.name.toLowerCase() === name.toLowerCase());
+  async function playerAction(action, name, button, reason) {
+    const d = await act(button, () => post(`/players/${action}`, { name, reason }));
+    if (d) setTimeout(loadPlayers, 700);
+  }
+  function renderOnline() {
+    const list = $("#online-list"), running = ST.state !== "stopped";
+    $("#online-count").textContent = running ? `${ST.players.length}/${ST.max_players || ST.settings.max_players}` : "";
+    if (!ST.players.length) { list.replaceChildren(el("div", { class: "empty-note", text: running ? "No hay nadie conectado." : "El servidor está parado." })); return; }
+    list.replaceChildren(...ST.players.map((p) => el("div", { class: "prow" }, head(p.uuid, p.name, "s5"),
+      el("div", {}, el("b", {}, p.name, isOp(p.name) ? el("span", { class: "badge op", text: "op" }) : null),
+        el("small", { text: `${dimName(p.dim)}${p.pos ? " · " + p.pos.join(", ") : ""} · ${fmtDur(Date.now() / 1000 - p.since)}` })),
+      el("div", { class: "acts" },
+        p.pos ? el("button", { class: "btn small icon", type: "button", title: "Ver en el mapa", onclick: () => goToMap(p) }, icon("pin")) : null,
+        el("button", { class: "btn small icon", type: "button", title: "Echar del servidor", onclick: async (e) => {
+          const b = e.currentTarget, reason = await ask({ title: `¿Echar a ${p.name}?`, text: "Podrá volver a entrar.", ok: "Echar", value: "", placeholder: "Motivo (opcional)" });
+          if (reason !== null) playerAction("kick", p.name, b, reason); } }, icon("out")),
+        el("button", { class: "btn small icon danger", type: "button", title: "Banear", onclick: (e) => banAsk(p.name, e.currentTarget) }, icon("ban"))))));
+  }
+  async function banAsk(name, button) {
+    const reason = await ask({ title: `¿Banear a ${name}?`, text: "No podrá volver a entrar hasta que le quites el baneo.", ok: "Banear", value: "", placeholder: "Motivo (opcional)" });
+    if (reason !== null) playerAction("ban", name, button, reason);
+  }
+  function listRows(items, empty, actions) {
+    if (!items.length) return [el("div", { class: "empty-note", text: empty })];
+    return items.slice().sort((a, b) => a.name.localeCompare(b.name)).map((p) => el("div", { class: "prow" }, head(p.uuid, p.name),
+      el("div", {}, el("b", {}, p.name, isOp(p.name) && actions !== "ops" ? el("span", { class: "badge op", text: "op" }) : null),
+        p.reason ? el("small", { text: p.reason }) : null),
+      el("div", { class: "acts" }, ...actionsFor(actions, p))));
+  }
+  function actionsFor(kind, p) {
+    const btn = (title, ic, action, cls = "") => el("button", { class: `btn small icon ${cls}`, type: "button", title,
+      onclick: (e) => playerAction(action, p.name, e.currentTarget) }, icon(ic));
+    if (kind === "wl") return [isOp(p.name) ? null : btn("Hacer op", "crown", "op"), btn("Quitar de la lista blanca", "x", "whitelist_remove", "danger")];
+    if (kind === "ops") return [btn("Quitar op", "x", "deop", "danger")];
+    return [el("button", { class: "btn small", type: "button", onclick: (e) => playerAction("pardon", p.name, e.currentTarget) }, icon("undo"), "Quitar baneo")];
+  }
+  async function loadPlayers() {
+    try { lists = await get("/api/players"); } catch (err) { toast(err.message, "error"); return; }
+    $("#wl-count").textContent = lists.whitelist.length;
+    $("#ops-count").textContent = lists.ops.length;
+    $("#bans-count").textContent = lists.bans.length;
+    $("#wl-state").replaceChildren(statusTag(ST.settings.whitelist ? { cls: "ok", icon: "lock", text: "Activada" } : { cls: "warn", icon: "globe", text: "Desactivada: entra cualquiera" }));
+    $("#wl-list").replaceChildren(...listRows(lists.whitelist, "Nadie en la lista blanca todavía.", "wl"));
+    $("#ops-list").replaceChildren(...listRows(lists.ops, "No hay operadores.", "ops"));
+    $("#bans-list").replaceChildren(...listRows(lists.bans, "No hay nadie baneado.", "bans"));
+    renderOnline();
+  }
+  $$("form[data-add]").forEach((f) => f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = $("input", f), name = input.value.trim();
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) { toast("Ese nombre no vale: hasta 16 letras, números o _.", "error"); return; }
+    await playerAction(f.dataset.add, name, $("button", f));
+    input.value = "";
+  }));
+  onShow.jugadores = loadPlayers;
+
+  // ------------------------------------------------------------ mapa
+  let mapLoaded = false, pendingHash = "";
+  function mapHash(p) {
+    const id = MAP_IDS[p.dim] || "world";
+    return `#${id}:${p.pos[0]}:${p.pos[1]}:${p.pos[2]}:90:0:0.6:0:0:perspective`;
+  }
+  function goToMap(p) {
+    pendingHash = mapHash(p);
+    if (currentPage === "mapa" && mapLoaded) { $("#map-iframe").contentWindow.location.hash = pendingHash; pendingHash = ""; }
+    else location.hash = "mapa";
+  }
+  function renderMapChips() {
+    const chips = ST.players.filter((p) => p.pos).map((p) => el("button", { class: "chip", type: "button", title: `Ir a ${p.name}`, onclick: () => goToMap(p) },
+      head(p.uuid, p.name, "s3"), p.name));
+    $("#home-map-chips").replaceChildren(...chips);
+    $("#home-map-tag").replaceChildren(statusTag(ST.settings.map_public ? { cls: "ok", icon: "globe", text: "Público" } : { cls: "none", icon: "lock", text: "Privado" }));
+  }
+  const MAP_TEXT = [[/render-threads are idle/i, "BlueMap al día"], [/render-threads are working|rendering/i, "Dibujando el mapa…"],
+    [/(\d+) maps? are updated/i, "$1 mapas al día"], [/last active (.+) ago/i, "activo hace $1"]];
+  function mapStatusText(raw) {
+    const lines = (raw || "").split(/\n|(?=[✔✘⌛⛏])/).map((l) => l.replace(/^[\s✔✘⌛⛏└├│─]+/, "").trim()).filter(Boolean);
+    const pctLine = lines.find((l) => /\d+(\.\d+)?%/.test(l));
+    if (pctLine) {
+      const pct = Math.round(parseFloat(pctLine.match(/(\d+(\.\d+)?)%/)[1]));
+      const left = lines.find((l) => /remaining time:/i.test(l));
+      const eta = left ? left.replace(/.*remaining time:\s*/i, "").replace(/hours?/g, "h").replace(/minutes?/g, "min").replace(/seconds?/g, "s") : "";
+      return `Dibujando el mapa: ${pct} %${eta ? ` · quedan ${eta}` : ""}`;
+    }
+    for (const [re, txt] of MAP_TEXT) { const l = lines.find((x) => re.test(x)); if (l) return l.replace(re, txt).replace(/^.*?(BlueMap al día|Dibujando el mapa…)/, "$1"); }
+    return lines[0] || "";
+  }
+  async function loadMap() {
+    let d;
+    try { d = await get("/api/map"); } catch (_) { return; }
+    $("#map-public").checked = d.public;
+    $("#map-players").checked = d.players;
+    $("#map-link").hidden = !d.public;
+    const st = !d.enabled ? "BlueMap está desactivado (pestaña Mods)." : !d.online ? "El servidor está parado: el mapa no está disponible." : mapStatusText(d.status);
+    $("#map-status").replaceChildren(st);
+    $("#map-update").disabled = $("#map-full").disabled = !d.online || !d.enabled;
+  }
+  onShow.mapa = () => {
+    const f = $("#map-iframe");
+    if (!mapLoaded) { f.src = "/mapa/" + pendingHash; mapLoaded = true; pendingHash = ""; }
+    else if (pendingHash) { f.contentWindow.location.hash = pendingHash; pendingHash = ""; }
+    loadMap();
+  };
+  setInterval(() => { if (currentPage === "mapa" && !document.hidden) loadMap(); }, 15000);
+  const mapUrl = () => `${location.origin}/mapa/`;
+  $("#map-public").addEventListener("change", async (e) => {
+    if (e.target.checked && !(await ask({ title: "¿Hacer público el mapa?", ok: "Hacer público",
+      text: `Cualquiera con el enlace podrá ver el mapa sin contraseña:\n${mapUrl()}\n\nEl resto del panel sigue protegido.` }))) { e.target.checked = false; return; }
+    const d = await act(null, () => post("/map/settings", { public: e.target.checked }));
+    if (!d) e.target.checked = !e.target.checked;
+    loadMap(); refresh();
+  });
+  $("#map-players").addEventListener("change", async (e) => {
+    const d = await act(null, () => post("/map/settings", { players: e.target.checked }));
+    if (!d) e.target.checked = !e.target.checked;
+  });
+  $("#map-link").addEventListener("click", () => copyText(mapUrl()));
+  $("#map-update").addEventListener("click", (e) => act(e.currentTarget, () => post("/map/render", { full: false })).then(loadMap));
+  $("#map-full").addEventListener("click", async (e) => {
+    if (!(await ask({ title: "¿Redibujar todo el mapa?", text: "BlueMap vuelve a dibujar el mundo entero. Con un mundo grande tarda bastante y gasta CPU mientras tanto.", ok: "Redibujar" }))) return;
+    act(e.currentTarget, () => post("/map/render", { full: true })).then(loadMap);
+  });
+
+  // ------------------------------------------------------------ consola
+  let logN = 0, logTimer = null;
+  const logBox = $("#log");
+  function lineClass(t) {
+    if (/^\[panel\]/.test(t)) return "panel";
+    if (/\/(WARN)\]|\bWARN\b/.test(t)) return "warn";
+    if (/\/(ERROR|FATAL)\]|\bERROR\b|Exception/.test(t)) return "error";
+    if (/^\[(init|mc-image-helper)\]|mc-server-runner/.test(t)) return "init";
+    if (/\]: (\[Not Secure\] )?<\w+> /.test(t) || /joined the game|left the game/.test(t)) return "chat";
+    return "";
+  }
+  function addLog(text, cls) {
+    const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 60;
+    logBox.append(el("span", { class: cls, text: text + "\n" }));
+    while (logBox.childElementCount > 4000) logBox.firstChild.remove();
+    if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+  }
+  async function pollLog() {
+    try {
+      const d = await get(`/api/log?after=${logN}`);
+      if (d.n < logN) { logBox.replaceChildren(); logN = 0; return pollLog(); }  // el panel se ha reiniciado
+      const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 60;
+      const frag = document.createDocumentFragment();
+      for (const [n, text] of d.lines) frag.append(el("span", { class: lineClass(text), text: text + "\n" }));
+      logBox.append(frag);
+      while (logBox.childElementCount > 4000) logBox.firstChild.remove();
+      if (atBottom || !logN) logBox.scrollTop = logBox.scrollHeight;
+      logN = d.n;
+    } catch (_) {}
+  }
+  onShow.consola = () => { pollLog(); setTimeout(() => $("#cmd").focus(), 50); };
+  setInterval(() => { if (currentPage === "consola" && !document.hidden) pollLog(); }, 1500);
+  $("#log-filter").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    $$("#log-filter button").forEach((x) => x.classList.toggle("active", x === b));
+    logBox.dataset.filter = b.dataset.filter;
+  });
+  const cmdHistory = [];
+  let histPos = 0;
+  async function runCommand(cmd) {
+    addLog(`› /${cmd}`, "cmd");
+    try {
+      const d = await post("/api/command", { cmd });
+      if (d.output) addLog(d.output.replace(/\n+$/, ""), "resp");
+      else addLog("(sin respuesta)", "resp");
+    } catch (err) { addLog(err.message, "error"); }
+  }
+  $("#cmd-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = $("#cmd"), cmd = input.value.trim().replace(/^\//, "");
+    if (!cmd) return;
+    cmdHistory.push(cmd); histPos = cmdHistory.length;
+    input.value = "";
+    runCommand(cmd);
+  });
+  $("#cmd").addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp" && histPos > 0) { histPos--; e.target.value = cmdHistory[histPos]; e.preventDefault(); }
+    else if (e.key === "ArrowDown") { histPos = Math.min(cmdHistory.length, histPos + 1); e.target.value = cmdHistory[histPos] || ""; e.preventDefault(); }
+  });
+  const QUICK = [["save", "Guardar el mundo", "save-all"], ["sun", "Hacer de día", "time set day"], ["cloud", "Quitar la lluvia", "weather clear"],
+    ["gauge", "TPS y MSPT", "tick query"], ["zap", "Buscar lag (spark, 30 s)", "spark profiler start --timeout 30"], ["map", "Estado del mapa", "bluemap"]];
+  $("#quick-cmds").replaceChildren(...QUICK.map(([ic, label, cmd]) => el("button", { class: "chip plain", type: "button", title: `/${cmd}`, onclick: () => runCommand(cmd) }, icon(ic), label)));
+
+  // ------------------------------------------------------------ mods
+  const GROUPS = [["optim", "Optimización", "Hacen que el servidor vaya más fluido sin cambiar nada del juego vanilla."],
+    ["tools", "Herramientas técnicas", "No cambian nada hasta que las usas con sus comandos."],
+    ["map", "Mapa", ""], ["base", "Base", ""]];
+  let modsData = null;
+  function modIcon(src, name) {
+    const box = el("div", { class: "mod-ico", text: (name || "?")[0].toUpperCase() });
+    if (src) { const img = el("img", { alt: "" }); img.onload = () => { box.textContent = ""; box.append(img); }; img.src = src; }
+    return box;
+  }
+  function modSwitch(slug, on, disabled) {
+    const input = el("input", { type: "checkbox", checked: on, disabled, "aria-label": "Activar" });
+    input.addEventListener("change", async () => {
+      const d = await act(null, () => post("/mods/set", { slug, on: input.checked }));
+      if (!d) { input.checked = !input.checked; return; }
+      modsData.enabled = d.enabled;
+      ST.settings.mods = d.enabled;
+      renderMods(); refresh();
+    });
+    return el("label", { class: "switch" }, input, el("span", { class: "knob" }));
+  }
+  function renderMods() {
+    const d = modsData, bySlug = {};
+    d.installed.forEach((f) => { if (f.slug) bySlug[f.slug] = f; });
+    const card = (m, info) => {
+      const on = d.enabled.includes(m.slug), inst = bySlug[m.slug];
+      return el("div", { class: `mod ${on ? "on" : ""}` }, modIcon((inst || {}).icon || info.icon || d.icons[m.slug], m.name),
+        el("div", {}, el("b", {}, m.name, m.channel === "alpha" ? el("span", { class: "badge alpha", text: "alpha" }) : null,
+            info.client_side === "required" ? el("span", { class: "badge client", text: "también en el cliente" }) : null),
+          el("p", { text: m.desc || info.summary || "" }),
+          el("span", { class: "ver", text: inst ? `Instalado: ${inst.version}` : on ? "Se instala al reiniciar" : "" })),
+        modSwitch(m.slug, on, !!m.required));
+    };
+    const groups = GROUPS.map(([g, title, sub]) => {
+      const mods = DATA.catalog.filter((m) => m.group === g);
+      return el("section", { class: "tile" }, el("div", { class: "tile-head" }, el("div", { class: "tile-title", text: title })),
+        sub ? el("p", { class: "tile-sub", text: sub }) : null,
+        el("div", { class: "mod-grid" }, ...mods.map((m) => card(m, {}))));
+    });
+    if (d.extras.length) groups.push(el("section", { class: "tile" }, el("div", { class: "tile-head" }, el("div", { class: "tile-title", text: "Añadidos por ti" })),
+      el("div", { class: "mod-grid" }, ...d.extras.map((x) => card({ slug: x.slug, name: x.name, desc: x.summary }, x)))));
+    $("#mod-groups").replaceChildren(...groups);
+    const known = new Set([...DATA.catalog.map((m) => m.slug), ...d.extras.map((x) => x.slug)]);
+    $("#files-count").textContent = d.installed.length;
+    $("#mod-files").replaceChildren(...(d.installed.length ? d.installed.map((f) => el("div", { class: "prow" }, modIcon(f.icon, f.name),
+      el("div", {}, el("b", {}, f.name, f.slug && !known.has(f.slug) ? el("span", { class: "badge", text: "dependencia" }) : null),
+        el("small", { text: `${f.file} · ${fmtSize(f.size)}` })),
+      el("small", { class: "mono muted", text: f.version }))) : [el("div", { class: "empty-note", text: "Todavía no hay mods: se bajan al arrancar el servidor." })]));
+    $("#search-sub").textContent = `Solo salen mods de Fabric para Minecraft ${d.version} que funcionan en el servidor. Si uno pone «también en el cliente», cada jugador tendría que instalarlo.`;
+  }
+  async function loadMods() {
+    try { modsData = await get("/api/mods"); } catch (err) { toast(err.message, "error"); return; }
+    renderMods();
+    if (modsData.error) toast(modsData.error, "error");
+    loadUpdate();
+  }
+  async function loadUpdate(version) {
+    const box = $("#version-box");
+    let u;
+    try { u = await get("/api/update" + (version ? `?version=${encodeURIComponent(version)}` : "")); }
+    catch (err) { box.replaceChildren(el("p", { class: "muted", text: err.message })); return; }
+    const fab = ST.fabric || {};
+    const intro = el("p", { style: "margin: 0;" }, "Minecraft ", el("b", { text: u.current }), fab.loader ? ` · Fabric Loader ${fab.loader}` : "",
+      " · los mods se actualizan solos (a su última versión para esta Minecraft) cada vez que arranca el servidor.");
+    if (!u.newer.length) { box.replaceChildren(intro, el("p", { class: "hint" }, statusTag({ cls: "ok", icon: "check", text: "Es la última versión de Minecraft" }))); return; }
+    const missing = (u.mods || []).filter((m) => !m.version);
+    const compat = el("div", { class: "compat" }, ...(u.mods || []).map((m) => el("div", {}, el("span", { text: m.name }),
+      m.version === "?" ? el("span", { class: "muted", text: "no se pudo comprobar" })
+        : m.version ? el("span", { class: "yes", text: m.version.version }) : el("span", { class: "no", text: "todavía no tiene versión" }))));
+    const select = u.newer.length > 1 ? el("select", { style: "width: auto;", onchange: (e) => loadUpdate(e.target.value) },
+      ...u.newer.map((v) => el("option", { value: v, selected: v === u.target, text: v }))) : null;
+    const btn = el("button", { class: "btn primary", type: "button", disabled: !u.fabric }, icon("sparkle"), `Actualizar a ${u.target}`);
+    btn.addEventListener("click", async () => {
+      const warn = missing.length ? `\n\nOjo: ${missing.map((m) => m.name).join(", ")} aún no ${missing.length === 1 ? "tiene" : "tienen"} versión y no se ${missing.length === 1 ? "instalará" : "instalarán"} hasta que salga.` : "";
+      if (!(await ask({ title: `¿Actualizar a Minecraft ${u.target}?`, ok: "Actualizar",
+        text: `Se hace antes una copia del mundo. Un mundo abierto en una versión nueva ya no se puede volver a abrir en la vieja (salvo restaurando la copia).${warn}` }))) return;
+      await act(btn, () => post("/update", { version: u.target }));
+      refresh();
+    });
+    box.replaceChildren(intro,
+      el("p", { style: "margin: 14px 0 0;" }, statusTag({ cls: "warn", icon: "sparkle", text: `Hay una versión nueva: ${u.latest}` }), select ? " " : "", select),
+      el("p", { class: "hint", text: u.fabric ? "Esto es lo que se instalaría:" : "Fabric todavía no tiene versión para esa Minecraft: hay que esperar." }), compat, btn);
+  }
+  onShow.mods = loadMods;
+  $("#mod-search").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = $("input", e.target).value.trim(), btn = $("button", e.target);
+    btn.classList.add("loading");
+    try {
+      const d = await get(`/api/mods/search?q=${encodeURIComponent(q)}`);
+      const res = d.results.filter((r) => !DATA.catalog.some((m) => m.slug === r.slug));
+      $("#mod-results").replaceChildren(...(res.length ? res.map((r) => {
+        const on = modsData && modsData.enabled.includes(r.slug);
+        const add = el("button", { class: "btn small", type: "button", disabled: on }, icon(on ? "check" : "plus"), on ? "Añadido" : "Añadir");
+        add.addEventListener("click", async () => {
+          const ok = r.client_side !== "required" || await ask({ title: `¿Añadir ${r.name}?`, ok: "Añadir",
+            text: "Este mod también hace falta en el cliente: cada jugador tendrá que instalarlo para poder entrar." });
+          if (!ok) return;
+          const res2 = await act(add, () => post("/mods/set", { slug: r.slug, on: true }));
+          if (res2) { add.disabled = true; add.replaceChildren(icon("check"), "Añadido"); loadMods(); refresh(); }
+        });
+        return el("div", { class: "mod" }, modIcon(r.icon, r.name),
+          el("div", {}, el("b", {}, r.name, r.client_side === "required" ? el("span", { class: "badge client", text: "también en el cliente" }) : null),
+            el("p", { text: r.summary }), el("span", { class: "ver", text: `${r.downloads.toLocaleString("es-ES")} descargas · ${r.slug}` })), add);
+      }) : [el("div", { class: "empty-note", text: "No hay resultados para esta versión." })]));
+    } catch (err) { toast(err.message, "error"); }
+    finally { btn.classList.remove("loading"); }
+  });
+
+  // ------------------------------------------------------------ ajustes
+  const form = $("#settings-form");
+  let baseline = "";
+  const formSig = () => JSON.stringify(formData());
+  function formData() {
+    const d = {};
+    for (const input of form.elements) {
+      if (!input.name) continue;
+      if (input.type === "checkbox") d[input.name] = input.checked;
+      else if (input.type === "radio") { if (input.checked) d[input.name] = input.value; }
+      else d[input.name] = input.value;
+    }
+    return d;
+  }
+  function syncRanges() {
+    for (const [id, out, fmt] of [["#f-mem", "#o-mem", (v) => `${v} GB`], ["#f-view", "#o-view", (v) => `${v} chunks`], ["#f-sim", "#o-sim", (v) => `${v} chunks`]]) {
+      const r = $(id);
+      $(out).textContent = fmt(r.value);
+      r.style.setProperty("--p", `${(100 * (r.value - r.min)) / (r.max - r.min)}%`);
+    }
+  }
+  function fillForm(s) {
+    for (const input of form.elements) {
+      if (!input.name || !(input.name in s)) continue;
+      if (input.type === "checkbox") input.checked = !!s[input.name];
+      else if (input.type === "radio") input.checked = input.value === s[input.name];
+      else input.value = s[input.name];
+    }
+    syncRanges();
+    baseline = formSig();
+    checkDirty();
+  }
+  function checkDirty() {
+    const dirty = formSig() !== baseline;
+    $("#savebar").classList.toggle("dirty", dirty);
+    $("#save-msg").textContent = dirty ? "Hay cambios sin guardar" : ST.pending ? "Guardado; falta reiniciar para aplicarlo" : "Todo guardado";
+    $("#nav-dirty").hidden = !dirty;
+  }
+  form.addEventListener("input", () => { syncRanges(); checkDirty(); });
+  form.addEventListener("change", checkDirty);
+  async function saveSettings(button) {
+    const d = await act(button, () => post("/settings", formData()));
+    if (d) { ST.settings = d.settings; ST.pending = d.pending; fillForm(d.settings); renderStatus(); }
+    return d;
+  }
+  $("#save-btn").addEventListener("click", (e) => saveSettings(e.currentTarget));
+  $("#save-restart").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    if (formSig() !== baseline && !(await saveSettings(b))) return;
+    if (ST.state === "stopped") { await act(b, () => post("/server/start")); }
+    else {
+      const n = ST.players.length;
+      if (!(await ask({ title: "¿Reiniciar el servidor?", ok: "Reiniciar", text: n ? `Hay ${n} conectados: se les avisa 10 segundos antes.` : "" }))) return;
+      await act(b, () => post("/server/restart"));
+    }
+    refresh();
+  });
+  window.addEventListener("beforeunload", (e) => { if (formSig() !== baseline) e.preventDefault(); });
+
+  // copias
+  async function loadBackups() {
+    let d;
+    try { d = await get("/api/backups"); } catch (err) { toast(err.message, "error"); return; }
+    $("#backups-count").textContent = d.backups.length;
+    const total = d.backups.reduce((a, b) => a + b.size, 0);
+    $("#backups-sub").textContent = `${d.backups.length ? `Ocupan ${fmtSize(total)}. ` : ""}Quedan ${fmtSize(d.disk.free)} libres en el disco. El mundo ocupa ${fmtSize(d.world_size)}.`;
+    $("#backup-list").replaceChildren(...(d.backups.length ? d.backups.map((b) => el("div", { class: "brow" },
+      el("div", {}, el("b", { text: fmtDate(b.time) }), el("small", { text: `${b.label} · ${fmtSize(b.size)}` })),
+      el("div", { class: "acts" },
+        el("a", { class: "btn small icon", href: `/backups/download/${encodeURIComponent(b.name)}`, title: "Descargar", download: b.name }, icon("download")),
+        el("button", { class: "btn small", type: "button", onclick: (e) => restoreBackup(b, e.currentTarget) }, icon("undo"), "Restaurar"),
+        el("button", { class: "btn small icon danger", type: "button", title: "Borrar", onclick: (e) => deleteBackup(b, e.currentTarget) }, icon("trash")))))
+      : [el("div", { class: "empty-note", text: "Aún no hay copias." })]));
+  }
+  async function restoreBackup(b, button) {
+    if (!(await ask({ title: "¿Restaurar esta copia?", ok: "Restaurar",
+      text: `Se para el servidor y el mundo vuelve a como estaba el ${fmtDate(b.time)}.\nAntes se guarda el mundo actual como otra copia («Antes de restaurar»), por si te arrepientes.` }))) return;
+    await act(button, () => post("/backups/restore", { name: b.name }));
+    refresh();
+  }
+  async function deleteBackup(b, button) {
+    if (!(await ask({ title: "¿Borrar esta copia?", ok: "Borrar", text: `${fmtDate(b.time)} · ${b.label} · ${fmtSize(b.size)}\nNo se puede deshacer.` }))) return;
+    if (await act(button, () => post("/backups/delete", { name: b.name }))) loadBackups();
+  }
+  const backupNow = async (e) => { await act(e.currentTarget, () => post("/backups/create")); refresh(); };
+  $("#backup-now").addEventListener("click", backupNow);
+  $("#home-backup").addEventListener("click", backupNow);
+  $("#new-world").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const seed = $("#nw-seed").value.trim(), type = $("#nw-type").value;
+    const typed = await ask({ title: "¿Crear un mundo nuevo?", ok: "Crear mundo nuevo", value: "", placeholder: "NUEVO",
+      text: `Se para el servidor, se guarda el mundo actual en Copias y se genera otro ${seed ? `con la semilla ${seed}` : "con una semilla al azar"}.\nEl mapa también empieza de cero.\n\nEscribe NUEVO para confirmar.` });
+    if (typed === null) return;
+    if (typed.toUpperCase() !== "NUEVO") { toast("No se ha creado: había que escribir NUEVO.", "error"); return; }
+    await act($("button", e.target), () => post("/world/new", { seed, level_type: type }));
+    refresh();
+  });
+  onShow.ajustes = () => { if (formSig() === baseline) fillForm(ST.settings); loadBackups(); };
+
+  // ------------------------------------------------------------ arranque
+  fillForm(ST.settings);
+  renderStatus();
+  showPage(location.hash.slice(1) || "inicio");
+</script>
+<style>
+  pre.log[data-filter="chat"] span:not(.chat):not(.cmd):not(.resp) { display: none; }
+  pre.log[data-filter="warn"] span:not(.warn):not(.error) { display: none; }
+</style>
+{% endblock %}

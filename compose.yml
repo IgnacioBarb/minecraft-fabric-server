@@ -1,0 +1,26 @@
+# Minecraft server (Fabric) + web panel + BlueMap 3D map, all in one container:
+# the panel starts and stops Minecraft (it uses the itzg/minecraft-server image underneath).
+services:
+  minecraft:
+    build: ./panel
+    image: mc-tecnico
+    container_name: mc-tecnico
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    ports:
+      # Game
+      - "${MC_PORT:-25565}:25565"
+      # Web panel
+      - "${PANEL_PORT:-8091}:8000"
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    # When the container stops, the panel saves the world and shuts Minecraft down cleanly.
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
